@@ -1,0 +1,118 @@
+/*----------------------------------------------------------------------------*/
+/*                                                                            */
+/*    Module:       main.cpp                                                  */
+/*    Author:       Jules                                                     */
+/*    Created:      Sep 26 2025                                               */
+/*    Description:  VEX V5 C++ Code for ESP32 Communication via MAX485        */
+/*                                                                            */
+/*    This file is intended to be used as a .v5cpp file in a VEXcode V5 Pro   */
+/*    project.                                                                */
+/*                                                                            */
+/*----------------------------------------------------------------------------*/
+
+// ---- START VEXCODE CONFIGURED DEVICES ----
+// In a real VEXcode V5 project, this section is automatically generated
+// and contains the device definitions from the graphical editor.
+// For this code to work, you MUST configure the following devices:
+// 1. A "Generic Serial" device on a Smart Port (e.g., PORT1). Name it "SerialPort".
+// 2. A "Digital Output" on a 3-Wire Port (e.g., Port A). Name it "DirectionControl".
+// ---- END VEXCODE CONFIGURED DEVICES ----
+
+#include "vex.h"
+
+using namespace vex;
+
+// --- Hardware Setup Instructions ---
+// 1. VEX V5 Brain Smart Port <--> MAX485 RO and DI pins.
+//    - Connect V5 Port's TX line to MAX485 DI (Driver Input).
+//    - Connect V5 Port's RX line to MAX485 RO (Receiver Output).
+// 2. VEX V5 Brain 3-Wire Port <--> MAX485 DE and /RE pins.
+//    - Connect the 3-Wire Port's signal line to both DE (Driver Enable)
+//      and /RE (Receiver Enable) pins of the MAX485. This single line will
+//      control the send/receive direction.
+// 3. Power and Ground:
+//    - Connect the MAX485's VCC and GND to a 5V and Ground source.
+//    - Ensure the VEX Brain and ESP32 share a common ground.
+
+// --- Device Definitions ---
+// These lines assume you have configured the devices in the VEXcode graphical editor
+// as instructed above. VEXcode will automatically create these objects.
+// If you named them differently, you must update the names in this code.
+extern serial SerialPort;
+extern digital_out DirectionControl;
+
+
+// --- Communication Protocol ---
+// This code implements a simple echo protocol.
+// The V5 Brain listens for a single character from the ESP32.
+// When a character is received, the Brain prints it to its screen and sends
+// the same character back to the ESP32.
+
+/**
+ * @brief Sends a single character over serial using the MAX485.
+ * @param data The character to send.
+ */
+void sendData(char data) {
+    // Set the MAX485 to TRANSMIT mode.
+    // A 'true' signal enables the driver (DE) and disables the receiver (/RE).
+    DirectionControl.set(true);
+
+    // Send the data character.
+    SerialPort.write(&data, 1);
+
+    // Wait for the transmission to complete. This is crucial to ensure the
+    // full message is sent before we switch the MAX485 back to receive mode.
+    // A small delay of a few milliseconds is usually sufficient.
+    wait(5, msec);
+
+    // Set the MAX485 back to RECEIVE mode.
+    // A 'false' signal disables the driver and enables the receiver.
+    DirectionControl.set(false);
+}
+
+int main() {
+    // Initializing Robot Configuration. DO NOT REMOVE!
+    vexcodeInit();
+
+    // --- Serial Port Configuration ---
+    // Set the baud rate. This MUST match the baud rate set on the ESP32.
+    // 9600 is a common and reliable speed for this type of communication.
+    SerialPort.setBaud(9600);
+
+    // Set the default direction of the MAX485 to RECEIVE.
+    DirectionControl.set(false);
+
+    // --- User Interface Setup ---
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1, 1);
+    Brain.Screen.print("ESP32 Communication Link");
+    Brain.Screen.newLine();
+    Brain.Screen.print("Status: Listening...");
+    Brain.Screen.newLine();
+
+    int packetsReceived = 0;
+
+    // --- Main Communication Loop ---
+    while (true) {
+        // Check if there is any data available to be read from the serial port.
+        if (SerialPort.readable()) {
+            // Read one character from the serial buffer.
+            char receivedData;
+            SerialPort.read(&receivedData, 1);
+
+            // Update the brain's screen with the received data.
+            packetsReceived++;
+            Brain.Screen.setCursor(3, 1);
+            Brain.Screen.print("Received: '%c' (ASCII: %d)", receivedData, receivedData);
+            Brain.Screen.setCursor(4, 1);
+            Brain.Screen.print("Total Packets: %d", packetsReceived);
+
+            // Echo the received character back to the ESP32.
+            sendData(receivedData);
+        }
+
+        // A small delay to prevent this loop from consuming too much processing
+        // power and to allow other tasks to run.
+        wait(20, msec);
+    }
+}
